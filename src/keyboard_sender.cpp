@@ -1,19 +1,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/byte_multi_array.hpp"
 
-using namespace std::chrono_literals;
-
-class MinimalPublisher : public rclcpp::Node
+class keyboardSender : public rclcpp::Node
 {
-public:
-  MinimalPublisher()
-  : Node("minimal_publisher"), count_(0)
-  {
-    publisher_ = this->create_publisher<std_msgs::msg::String>("encoded_data", 10);
-    timer_ = this->create_wall_timer(
-      500ms, std::bind(&MinimalPublisher::timer_callback, this));
-  }
-
 private:
   void timer_callback()
   {
@@ -25,6 +14,13 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
   size_t count_;
+
+public:
+  keyboardSender()
+  : Node("keyboard_sender_node")
+  {
+    publisher_ = this->create_publisher<std_msgs::msg::String>("encoded_data", 10);
+  }
 };
 
 int main(int argc, char * argv[])
