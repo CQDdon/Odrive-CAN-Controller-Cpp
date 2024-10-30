@@ -8,7 +8,7 @@
       "includePath": [
         "/opt/ros/humble/include/**",
         "/home/ddon/ros2_ws_cpp/src/cpp_pubsub/include/**",
-        "/home/ddon/ros2_ws_cpp/src/robocon2024/odrive_can/include/**",
+        "/home/ddon/ros2_ws_cpp/src/robocon2024/odrive_can_cpp/include/**",
         "include/**",
         "/usr/include/**"
       ],

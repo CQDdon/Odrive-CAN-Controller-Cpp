@@ -11,6 +11,7 @@ private:
     /*
     Code here if you trust me unconditional
     */
+   RCLCPP_INFO(this->get_logger(), "Received message with size: %zu", msg.data.size());
   }
   rclcpp::Subscription<std_msgs::msg::ByteMultiArray>::SharedPtr subscription_;
 
@@ -19,7 +20,7 @@ public:
   : Node("odrive_sender")
   {
     subscription_ = this->create_subscription<std_msgs::msg::ByteMultiArray>(
-      "topic", 10, std::bind(&odriveSender::topic_callback, this, _1));
+      "encoded_data", 10, std::bind(&odriveSender::topic_callback, this, std::placeholders::_1));
   }
 };
 
