@@ -16,8 +16,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::ByteMultiArray>::SharedPtr subscription_;
 
 public:
-  odriveSender()
-  : Node("odrive_sender")
+  odriveSender() : Node("odrive_sender")
   {
     subscription_ = this->create_subscription<std_msgs::msg::ByteMultiArray>(
       "encoded_data", 10, std::bind(&odriveSender::topic_callback, this, std::placeholders::_1));
