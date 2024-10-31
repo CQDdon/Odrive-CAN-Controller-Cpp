@@ -1,7 +1,5 @@
-// Since this code was wrote stupidly without any understanding, please check this code carefully (better using chatGPT to regenerate it)
-
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/byte_multi_array.hpp> // For ByteMultiArray messages
+#include <std_msgs/msg/string.hpp> 
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <net/if.h>
@@ -26,7 +24,7 @@ public:
 
         // Bind the socket to can0 interface
         struct ifreq ifr;
-        strncpy(ifr.ifr_name, "can0", IFNAMSIZ);
+        strncpy(ifr.ifr_name, "vcan0", IFNAMSIZ);
         if (ioctl(can_socket_, SIOCGIFINDEX, &ifr) < 0) {
             RCLCPP_ERROR(this->get_logger(), "Error binding to can0");
             return;
@@ -42,7 +40,7 @@ public:
         }
 
         // Subscription to listen to `encoded_data` topic
-        subscriber_ = this->create_subscription<std_msgs::msg::ByteMultiArray>(
+        subscriber_ = this->create_subscription<std_msgs::msg::String>(
             "encoded_data", 10, bind(&CANUSBNode::listener_callback, this, placeholders::_1)
         );
     }
@@ -55,46 +53,79 @@ public:
 
 private:
     int can_socket_;
-    rclcpp::Subscription<std_msgs::msg::ByteMultiArray>::SharedPtr subscriber_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscriber_;
 
-    vector<uint8_t> pad_vector(const vector<uint8_t>& data, size_t target_length = 8, uint8_t pad_value = 0) {
-        vector<uint8_t> padded_data = data;
-        if (padded_data.size() < target_length) {
-            padded_data.resize(target_length, pad_value);
-        } else if (padded_data.size() > target_length) {
-            padded_data.resize(target_length);
+    void pad_array(const uint8_t* data, size_t data_length, uint8_t* padded_data, size_t target_length = 8, uint8_t pad_value = 0) {
+        // Copy data to padded_data
+        std::memcpy(padded_data, data, std::min(data_length, target_length));
+
+        // Pad with pad_value if needed
+        if (data_length < target_length) {
+            std::fill(padded_data + data_length, padded_data + target_length, pad_value);
         }
-        return padded_data;
     }
 
-    void listener_callback(const std_msgs::msg::ByteMultiArray::SharedPtr msg) {
-        if (msg->data.size() != 5) {
-            RCLCPP_ERROR(this->get_logger(), "Invalid data length; expected 5 bytes (1 ID and 4 data bytes)");
+    void listener_callback(const std_msgs::msg::String::SharedPtr msg) {
+
+        // Parse data from publisher
+        std::stringstream ss(msg->data);
+        std::string id_str, mode_str, data_str;
+        if (!std::getline(ss, id_str, ',') || !std::getline(ss, mode_str, ',') || !std::getline(ss, data_str)) {
+            RCLCPP_ERROR(this->get_logger(), "Invalid input format");
             return;
         }
 
+        // Convert ID from hex string to integer
+        int input_id;
+        std::stringstream(id_str) >> std::hex >> input_id;
+        if (input_id > 0x3F) { // 6-bit limit
+            RCLCPP_ERROR(this->get_logger(), "Input ID exceeds 6-bit limit for 11-bit encoding");
+            return;
+        }
+
+        // Determine mode and corresponding hexadecimal
+        int mode_hex;
+        if (mode_str == "vel") mode_hex = 0x0D;
+        else if (mode_str == "ang") mode_hex = 0x0C;
+        else {
+            RCLCPP_ERROR(this->get_logger(), "Invalid mode: %s", mode_str.c_str());
+            return;
+        }
+
+        // Encode ID: ID_input << 5 | mode_hex
+        int encoded_id = ((input_id << 5) | mode_hex) & 0x7FF;
+
+        // Convert data from string to float
+        float data_float = std::stof(data_str);
+
+        // Convert float to IEEE 754 format (little-endian)
+        uint8_t data_bytes[4];
+        std::memcpy(data_bytes, &data_float, sizeof(data_float));
+
         // Extract ID and data bytes from the message
         can_frame frame;
-        frame.can_id = msg->data[0];
-        auto data_bytes = vector<uint8_t>(msg->data.begin() + 1, msg->data.end());
-        data_bytes = pad_vector(data_bytes);
+        frame.can_id = encoded_id;
 
-        memcpy(frame.data, data_bytes.data(), 8);
+        uint8_t data_send[8];
+        pad_array(data_bytes, 4, data_send);
+
+        memcpy(frame.data, data_send, 8);
         frame.can_dlc = 8;
 
         // Print the data in hex format
-        stringstream ss;
-        ss << hex << (int)frame.can_id << "#";
+        stringstream sts;
+        sts << hex << (int)frame.can_id << "#";
         for (int i = 0; i < frame.can_dlc; ++i) {
-            ss << hex << (int)frame.data[i];
+            sts << hex << (int)frame.data[i];
         }
-        cout << ss.str() << endl;
+        
 
         // Send CAN message
         if (write(can_socket_, &frame, sizeof(frame)) != sizeof(frame)) {
             RCLCPP_ERROR(this->get_logger(), "Message NOT sent");
         } else {
-            RCLCPP_INFO(this->get_logger(), "Message sent on can0");
+            RCLCPP_INFO(this->get_logger(), "Message sent on can0: ");
+            cout << sts.str() << endl;
         }
     }
 };
