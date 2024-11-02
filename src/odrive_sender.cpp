@@ -55,6 +55,11 @@ private:
     int can_socket_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscriber_;
 
+    enum ConfigMode {
+        VEL = 0,
+        ANG = 1
+    };
+
     void pad_array(const uint8_t* data, size_t data_length, uint8_t* padded_data, size_t target_length = 8, uint8_t pad_value = 0) {
         // Copy data to padded_data
         std::memcpy(padded_data, data, std::min(data_length, target_length));
@@ -65,39 +70,12 @@ private:
         }
     }
 
-    void listener_callback(const std_msgs::msg::String::SharedPtr msg) {
-
-        // Parse data from publisher
-        std::stringstream ss(msg->data);
-        std::string id_str, mode_str, data_str;
-        if (!std::getline(ss, id_str, ',') || !std::getline(ss, mode_str, ',') || !std::getline(ss, data_str)) {
-            RCLCPP_ERROR(this->get_logger(), "Invalid input format");
-            return;
-        }
-
+    void control_mode(std::string id_str, std::string mode_str, std::string data_str) {
         // Convert ID from hex string to integer
         int input_id;
         std::stringstream(id_str) >> std::hex >> input_id;
         if (input_id > 0x3F) { // 6-bit limit
             RCLCPP_ERROR(this->get_logger(), "Input ID exceeds 6-bit limit for 11-bit encoding");
-            return;
-        }
-
-        // Determine mode and corresponding hexadecimal
-        int mode_hex;
-        bool vel_flag = 0;
-        bool ang_flag = 0;
-        if (mode_str == "vel") {
-            mode_hex = 0x0D;
-            vel_flag = 1;
-            ang_flag = 0;
-        }
-        else if (mode_str == "ang") {
-            mode_hex = 0x0C;
-            ang_flag = 1;
-            vel_flag = 0;
-        else {
-            RCLCPP_ERROR(this->get_logger(), "Invalid mode: %s", mode_str.c_str());
             return;
         }
 
@@ -107,13 +85,45 @@ private:
         // Convert data from string to float
         float data_float = std::stof(data_str);
 
-        // Convert float to IEEE 754 format (little-endian)
-        uint8_t data_bytes[4];
-        std::memcpy(data_bytes, &data_float, sizeof(data_float));
-
         // Extract ID and data bytes from the message
         can_frame frame;
         frame.can_id = encoded_id;
+
+        // Determine mode and corresponding hexadecimal
+        uint8_t mode_hex;
+        bool vel_flag = 0;
+        bool ang_flag = 0;
+        if (mode_str == "vel") {
+            mode_hex = 0x0D;
+            !vel_flag ? vel_flag = 1;
+            ang_flag = 0;
+        }
+        else if (mode_str == "ang") {
+            mode_hex = 0x0C;
+            !ang_flag ? ang_flag = 1;
+            vel_flag = 0;
+        }
+        else {
+            RCLCPP_ERROR(this->get_logger(), "Invalid mode: %s", mode_str.c_str());
+            return;
+        }
+
+        int axis = 0;
+        // Configure when change mode/choose mode for the first time
+        if (vel_flag || ang_flag) {
+            cout << "Axis: ";
+            cin >> axis;
+            cout << endl;
+            if (vel_flag) {
+                config_mode(axis, VEL);
+            } else if (ang_flag) {
+                config_mode(axis, ANG);
+            }
+        }
+
+        // Convert float to IEEE 754 format (little-endian)
+        uint8_t data_bytes[4];
+        std::memcpy(data_bytes, &data_float, sizeof(data_float));
 
         uint8_t data_send[8];
         pad_array(data_bytes, 4, data_send);
@@ -136,6 +146,27 @@ private:
             RCLCPP_INFO(this->get_logger(), "Message sent on can0: ");
             cout << sts.str() << endl;
         }
+    }
+
+    void config_mode(std::string axis, ConfigMode config_) {
+        
+    }
+
+    void listener_callback(const std_msgs::msg::String::SharedPtr msg) {
+        // Parse data from publisher
+        std::stringstream ss(msg->data);
+        std::string id_str, mode_str, data_str;
+        if (!std::getline(ss, id_str, ',') || !std::getline(ss, mode_str, ',') || !std::getline(ss, data_str)) {
+            RCLCPP_ERROR(this->get_logger(), "Invalid input format");
+            return;
+        }
+
+        if (id_str != "FF") {
+            control_mode(id_str, mode_str, data_str);
+        } else {
+            config_mode(mode_str, data_str);
+        }
+        
     }
 };
 
