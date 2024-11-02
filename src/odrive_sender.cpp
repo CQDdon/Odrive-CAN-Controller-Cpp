@@ -85,8 +85,17 @@ private:
 
         // Determine mode and corresponding hexadecimal
         int mode_hex;
-        if (mode_str == "vel") mode_hex = 0x0D;
-        else if (mode_str == "ang") mode_hex = 0x0C;
+        bool vel_flag = 0;
+        bool ang_flag = 0;
+        if (mode_str == "vel") {
+            mode_hex = 0x0D;
+            vel_flag = 1;
+            ang_flag = 0;
+        }
+        else if (mode_str == "ang") {
+            mode_hex = 0x0C;
+            ang_flag = 1;
+            vel_flag = 0;
         else {
             RCLCPP_ERROR(this->get_logger(), "Invalid mode: %s", mode_str.c_str());
             return;
